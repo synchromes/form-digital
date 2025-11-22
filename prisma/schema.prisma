@@ -1,0 +1,153 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  password  String
+  name      String
+  role      String   @default("admin")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model FormTemplate {
+  id               String      @id @default(cuid())
+  title            String
+  description      String?     @db.Text
+  slug             String      @unique
+  isActive         Boolean     @default(true)
+  documentTemplate String?     @db.Text // Rich text HTML template
+  signatureBoxes   String?     @db.Text // JSON config for signature boxes
+  timId            String?     // Related tim (1 form = 1 tim)
+  tim              Tim?        @relation(fields: [timId], references: [id], onDelete: SetNull)
+  fields           FormField[]
+  submissions      Submission[]
+  deletedAt        DateTime?   // Soft delete timestamp
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+
+  @@index([timId])
+}
+
+enum FieldType {
+  TEXT
+  EMAIL
+  NUMBER
+  TEXTAREA
+  SELECT
+  DATE
+  FILE
+  SIGNATURE
+  PHONE
+  WHATSAPP
+  TIM
+}
+
+model FormField {
+  id              String           @id @default(cuid())
+  formTemplateId  String
+  formTemplate    FormTemplate     @relation(fields: [formTemplateId], references: [id], onDelete: Cascade)
+  label           String
+  fieldType       FieldType
+  placeholder     String?
+  required        Boolean          @default(false)
+  options         String?          @db.Text // JSON string for SELECT options
+  allowPastDates  Boolean          @default(true) // For DATE type, whether to allow selecting past dates
+  order           Int
+  submissionData  SubmissionData[]
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  @@index([formTemplateId])
+}
+
+model Submission {
+  id              String           @id @default(cuid())
+  formTemplateId  String
+  formTemplate    FormTemplate     @relation(fields: [formTemplateId], references: [id], onDelete: Cascade)
+  data            SubmissionData[]
+  status          String           @default("pending") // pending, approved, rejected
+  rejectionReason String?          @db.Text // Alasan penolakan (hanya jika status rejected)
+  signatureData   String?          @db.Text // Base64 image data for digital signature
+  snapshotTemplate String?         @db.Text // Snapshot of document template at submission time
+  snapshotSignatureBoxes String?   @db.Text // Snapshot of signature boxes at submission time
+  deletedAt       DateTime?        // Soft delete timestamp
+  submittedAt     DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  @@index([formTemplateId])
+}
+
+model SubmissionData {
+  id           String     @id @default(cuid())
+  submissionId String
+  submission   Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  fieldId      String
+  field        FormField  @relation(fields: [fieldId], references: [id], onDelete: Cascade)
+  value        String     @db.Text
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  @@index([submissionId])
+  @@index([fieldId])
+}
+
+model LetterConfig {
+  id              String   @id @default(cuid())
+  organizationName String  @default("LPP TVRI")
+  letterhead      String   @db.Text // HTML or image path
+  footer          String   @db.Text // HTML or text
+  logo            String?  // Logo image path
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model WhatsAppConfig {
+  id              String   @id @default(cuid())
+  gatewayUrl      String   @default("http://localhost:5001") // WhatsApp Gateway URL
+  sessionName     String   @default("tvri-form") // Session name for WhatsApp
+  apiKey          String?  // Optional API key for WhatsApp Gateway
+  isActive        Boolean  @default(false) // Enable/disable WhatsApp notifications
+  isConnected     Boolean  @default(false) // Connection status
+  lastChecked     DateTime? // Last time connection was checked
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model Pejabat {
+  id           String   @id @default(cuid())
+  nama         String
+  nip          String   @unique
+  jabatan      String   // Ketua Tim Keuangan, Kepala Stasiun, dll
+  isActive     Boolean  @default(true)
+  deletedAt    DateTime? // Soft delete timestamp
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  timDipimpin  Tim[]    @relation("KetuaTim") // Tim yang dipimpin
+}
+
+model Tim {
+  id           String        @id @default(cuid())
+  namaTim      String
+  ketuaTimId   String
+  ketuaTim     Pejabat       @relation("KetuaTim", fields: [ketuaTimId], references: [id])
+  isActive     Boolean       @default(true)
+  deletedAt    DateTime?     // Soft delete timestamp
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  forms        FormTemplate[] // Forms terkait tim ini
+
+  @@index([ketuaTimId])
+}
